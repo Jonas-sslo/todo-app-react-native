@@ -1,5 +1,5 @@
-import React from "react";
-import { Button, Keyboard, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useState } from "react";
+import { Button, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 
 import * as crypto from "expo-crypto";
@@ -7,7 +7,9 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 type uuid = string;
 
-type TodoItem = { id: uuid; value: string; done: boolean };
+type Filter = "all" | "done" | "pending";
+
+type TodoItem = { id: uuid; value: string; status: Filter };
 
 function ListItem({ todoItem, toggleTodo }: { todoItem: TodoItem; toggleTodo: (id: uuid) => void }) {
 
@@ -18,7 +20,7 @@ function ListItem({ todoItem, toggleTodo }: { todoItem: TodoItem; toggleTodo: (i
 
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      {!todoItem.done ? (
+      {todoItem.status !== "done" ? (
         <>
           <Text style={styles.item}>{todoItem.value}</Text>
           <Button title="Concluir" onPress={() => {handlePress(todoItem.id)}} color="green" />
@@ -56,21 +58,60 @@ function AddTodoForm({ addTodoHandler }: { addTodoHandler: (text: string) => voi
   );
 }
 
+function TodoFilter({ currentFilter, onFilterChange }: { currentFilter: Filter, onFilterChange: (filter: Filter) => void }) {
+  const filters : { key: Filter, label: string }[] = [
+    { key: "all", label: "TODOS" },
+    { key: "pending", label: "PENDENTE" },
+    { key: "done", label: "CONCLUÍDO" }
+  ];
+
+  return (
+    <View style={styles.filterContainer}>
+      {filters.map((filter) => (
+        <TouchableOpacity 
+          key={filter.key}
+          style={[
+            styles.filterButton, 
+            currentFilter === filter.key && styles.filterButtonActive
+          ]}
+          onPress={() => onFilterChange(filter.key)}
+        >
+          <Text style={[
+              styles.filterText, 
+              currentFilter === filter.key && styles.filterTextActive
+            ]}>
+            {filter.label}
+          </Text>
+        </TouchableOpacity>
+        ))}
+    </View>
+  ) 
+}
+
 
 export default function Index() {
   
   const [todos, setTodos] = React.useState<TodoItem[]>([
-    { id: crypto.randomUUID(), value: "Sample Todo", done: false },
-    { id: crypto.randomUUID(), value: "Sample Todo 2", done: true },
-    { id: crypto.randomUUID(), value: "Sample Todo 3", done: false },
+    { id: crypto.randomUUID(), value: "Sample Todo", status: "pending" },
+    { id: crypto.randomUUID(), value: "Sample Todo 2", status: "done" },
+    { id: crypto.randomUUID(), value: "Sample Todo 3", status: "pending" },
   ]);
 
+  const [currentFilter, setCurrentFilter] = useState<Filter>("all");
+
+  const filteredTodos = todos.filter(todo => {
+    if (currentFilter === "all") return true;
+    if (currentFilter === "pending") return todo.status === "pending";
+    if (currentFilter === "done") return todo.status === "done";
+    return true;
+  });
+
   const addTodo = (text: string) => {
-    setTodos([...todos, { id: crypto.randomUUID(), value: text, done: false }]);
+    setTodos([...todos, { id: crypto.randomUUID(), value: text, status: "pending" }]);
   };
 
   const toggleTodo = (id: uuid) => {
-    setTodos(todos.map(todo => todo.id === id ? { ...todo, done: !todo.done } : todo));
+    setTodos(todos.map(todo => todo.id === id ? { ...todo, status: todo.status === "pending" ? "done" : "pending" } : todo));
   };
 
   return (
@@ -81,9 +122,10 @@ export default function Index() {
             TODO List
           </Text>
           <AddTodoForm addTodoHandler={addTodo} />
+          <TodoFilter currentFilter={currentFilter} onFilterChange={setCurrentFilter}/>
           <FlatList
             style={styles.list}
-            data={todos.sort((a, b) => a.done === b.done ? 0 : a.done ? 1 : -1)}
+            data={filteredTodos.sort((a, b) => a.status === b.status ? 0 : a.status === "done" ? 1 : -1)}
             renderItem={({ item }) => <ListItem todoItem={item} toggleTodo={toggleTodo} />}
           />
         </GestureHandlerRootView>
@@ -125,5 +167,26 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 20,
   },
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    gap: 10,
+    marginVertical: 10,
+  },
+  filterButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: "lightgray",
+  },
+  filterButtonActive: {
+    backgroundColor: '#9b9999ff',
+  },
+  filterText: {
+    fontSize: 16,
+    color: "black",
+  },
+  filterTextActive: {
+    fontWeight: 'bold',
+  },
 });
-
