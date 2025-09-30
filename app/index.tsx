@@ -1,15 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 
-import * as crypto from "expo-crypto";
+import { getAllTodos, getDBVersion, getSQLiteVersion, insertTodo, migrateDB, updateTodo } from "@/lib/db";
+import { Filter, TodoItem, uuid } from "@/lib/types";
+import { SQLiteProvider, useSQLiteContext } from "expo-sqlite";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-
-type uuid = string;
-
-type Filter = "all" | "done" | "pending";
-
-type TodoItem = { id: uuid; value: string; status: Filter };
 
 function ListItem({ todoItem, toggleTodo }: { todoItem: TodoItem; toggleTodo: (id: uuid) => void }) {
 
@@ -61,8 +57,8 @@ function AddTodoForm({ addTodoHandler }: { addTodoHandler: (text: string) => voi
 function TodoFilter({ currentFilter, onFilterChange }: { currentFilter: Filter, onFilterChange: (filter: Filter) => void }) {
   const filters : { key: Filter, label: string }[] = [
     { key: "all", label: "TODOS" },
-    { key: "pending", label: "PENDENTE" },
-    { key: "done", label: "CONCLUÍDO" }
+    { key: "pending", label: "PENDENTES" },
+    { key: "done", label: "CONCLUÍDOS" }
   ];
 
   return (
@@ -88,14 +84,51 @@ function TodoFilter({ currentFilter, onFilterChange }: { currentFilter: Filter, 
   ) 
 }
 
+function Footer() {
+  const db = useSQLiteContext();
 
-export default function Index() {
+  const [sqliteVersion, setSqliteVersion] = useState<string>("");
+  const [dbVersion, setDBVersion] = useState<string>();
+
+  useEffect(() => {
+    async function setup() {
+      const sqliteVersionResult = await getSQLiteVersion(db);
+
+      sqliteVersionResult 
+        ? setSqliteVersion(sqliteVersionResult['sqlite_version()'])
+        : setSqliteVersion('unknown');
+
+      const dbVersionResult = await getDBVersion(db);
+      
+      dbVersionResult 
+        ? setDBVersion(dbVersionResult['user_version'].toString())
+        : setDBVersion('unknown');
+      }
+    
+    setup();
+  }, [db]);
   
-  const [todos, setTodos] = React.useState<TodoItem[]>([
-    { id: crypto.randomUUID(), value: "Sample Todo", status: "pending" },
-    { id: crypto.randomUUID(), value: "Sample Todo 2", status: "done" },
-    { id: crypto.randomUUID(), value: "Sample Todo 3", status: "pending" },
-  ]);
+  return (
+    <View>
+      <Text style={{padding: 20}}>SQLITE version: {sqliteVersion} / DBVersion: {dbVersion}</Text>
+    </View>
+  )
+}
+
+
+function TodoList() {
+  const [todos, setTodos] = React.useState<TodoItem[]>([]);
+
+  const db = useSQLiteContext();
+
+  useEffect(() => {
+    async function load() {
+      const result = await getAllTodos(db);
+      setTodos(result);
+    }
+
+    load();
+  }, [db]);
 
   const [currentFilter, setCurrentFilter] = useState<Filter>("all");
 
@@ -106,32 +139,52 @@ export default function Index() {
     return true;
   });
 
-  const addTodo = (text: string) => {
-    setTodos([...todos, { id: crypto.randomUUID(), value: text, status: "pending" }]);
+  const addTodo = async (text: string) => {
+    await insertTodo(db, text);
+    const todos = await getAllTodos(db);
+    setTodos(todos);
   };
 
-  const toggleTodo = (id: uuid) => {
-    setTodos(todos.map(todo => todo.id === id ? { ...todo, status: todo.status === "pending" ? "done" : "pending" } : todo));
+  const toggleTodo = async (id: uuid) => {
+    const newStatus = currentFilter === 'pending' ? 'done' : 'pending';
+    await updateTodo(db, newStatus, id);
+    const todos = await getAllTodos(db); 
+    setTodos(todos);
   };
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
-        <GestureHandlerRootView style={styles.container}>
-          <Text style={{ fontSize: 32, fontWeight: "bold", marginTop: 20 }}>
-            TODO List
-          </Text>
-          <AddTodoForm addTodoHandler={addTodo} />
-          <TodoFilter currentFilter={currentFilter} onFilterChange={setCurrentFilter}/>
-          <FlatList
-            style={styles.list}
-            data={filteredTodos.sort((a, b) => a.status === b.status ? 0 : a.status === "done" ? 1 : -1)}
-            renderItem={({ item }) => <ListItem todoItem={item} toggleTodo={toggleTodo} />}
-          />
-        </GestureHandlerRootView>
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.container}>
+      <Text style={{ fontSize: 32, fontWeight: "bold", marginTop: 20 }}>
+        TODO List
+      </Text>
+      <AddTodoForm addTodoHandler={addTodo} />
+      <TodoFilter currentFilter={currentFilter} onFilterChange={setCurrentFilter}/>
+      <FlatList
+        style={styles.list}
+        data={filteredTodos.sort((a, b) => {
+          const aDate = a.createdAt ?? new Date(0);
+          const bDate = a.createdAt ?? new Date(0);
+
+          return (a.status === b.status && aDate === bDate) 
+            ? 0 
+            : (a.status === "done" && aDate < bDate) 
+              ? 1 : -1
+        })}
+        renderItem={({ item }) => <ListItem todoItem={item} toggleTodo={toggleTodo} />}
+      />
+    </GestureHandlerRootView>
   );
+}
+
+export default function Index() {
+  <SafeAreaProvider>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
+      <SQLiteProvider databaseName="todos.db" onInit={migrateDB}>
+        <TodoList />
+        <Footer />
+      </SQLiteProvider>
+    </SafeAreaView>
+  </SafeAreaProvider>
 }
 
 const styles = StyleSheet.create({
