@@ -18,11 +18,11 @@ function ListItem({ todoItem, toggleTodo }: { todoItem: TodoItem; toggleTodo: (i
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
       {todoItem.status !== "done" ? (
         <>
-          <Text style={styles.item}>{todoItem.value}</Text>
+          <Text style={styles.item}>{todoItem.text}</Text>
           <Button title="Concluir" onPress={() => {handlePress(todoItem.id)}} color="green" />
         </>
       ) : (
-        <Text style={styles.itemdone}>{todoItem.value}</Text>
+        <Text style={styles.itemdone}>{todoItem.text}</Text>
       )}
     </View>
   );
@@ -94,12 +94,14 @@ function Footer() {
     async function setup() {
       const sqliteVersionResult = await getSQLiteVersion(db);
 
+      // eslint-disable-next-line no-unused-expressions
       sqliteVersionResult 
         ? setSqliteVersion(sqliteVersionResult['sqlite_version()'])
         : setSqliteVersion('unknown');
 
       const dbVersionResult = await getDBVersion(db);
       
+      // eslint-disable-next-line no-unused-expressions
       dbVersionResult 
         ? setDBVersion(dbVersionResult['user_version'].toString())
         : setDBVersion('unknown');
@@ -162,13 +164,14 @@ function TodoList() {
       <FlatList
         style={styles.list}
         data={filteredTodos.sort((a, b) => {
-          const aDate = a.createdAt ?? new Date(0);
-          const bDate = a.createdAt ?? new Date(0);
+          const aDate = new Date(a.createdAt ?? new Date(0));
+          const bDate = new Date(b.createdAt ?? new Date(0));
 
-          return (a.status === b.status && aDate === bDate) 
-            ? 0 
-            : (a.status === "done" && aDate < bDate) 
-              ? 1 : -1
+          if (a.status !== b.status) {
+            return a.status === 'pending' ? -1 : 1;
+          }
+
+          return bDate.getTime() - aDate.getTime();
         })}
         renderItem={({ item }) => <ListItem todoItem={item} toggleTodo={toggleTodo} />}
       />
@@ -177,7 +180,7 @@ function TodoList() {
 }
 
 export default function Index() {
-  <SafeAreaProvider>
+  return <SafeAreaProvider>
     <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
       <SQLiteProvider databaseName="todos.db" onInit={migrateDB}>
         <TodoList />
