@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Button, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { getAllTodos, getDBVersion, getSQLiteVersion, insertTodo, migrateDB, updateTodo } from "@/lib/db";
 import { Filter, TodoItem, uuid } from "@/lib/types";
@@ -8,23 +9,38 @@ import { SQLiteProvider, useSQLiteContext } from "expo-sqlite";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 function ListItem({ todoItem, toggleTodo }: { todoItem: TodoItem; toggleTodo: (id: uuid) => void }) {
+  const isDone = todoItem.status === "done";
 
-  const handlePress = (id: uuid) => {
-    console.log(`Todo item with id ${id} marked as complete.`);
-    toggleTodo(id);
-  };
+  const renderRightActions = () => {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.swipeableButton,
+          { backgroundColor: isDone ? "#f312f3ff" : "#2ecc71" }
+        ]}
+        onPress={() => toggleTodo(todoItem.id)}
+      >
+        <Text style={styles.swipeableText}>
+          {isDone ? "Marcar como pendente" : "Marcar como concluído"}
+        </Text>
+      </TouchableOpacity>
+    )
+  }
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      {todoItem.status !== "done" ? (
-        <>
-          <Text style={styles.item}>{todoItem.text}</Text>
-          <Button title="Concluir" onPress={() => {handlePress(todoItem.id)}} color="green" />
-        </>
-      ) : (
-        <Text style={styles.itemdone}>{todoItem.text}</Text>
-      )}
-    </View>
+    <GestureHandlerRootView>
+      <ReanimatedSwipeable
+        friction={2}
+        rightThreshold={40}
+        renderRightActions={renderRightActions}
+      >
+        <View style={{ padding: 5, borderBottomWidth: 1, borderBottomColor: "gray" }}>
+          <Text style={[styles.item, isDone && styles.itemDone]}>
+            {todoItem.text}
+          </Text>
+        </View>
+      </ReanimatedSwipeable>
+    </GestureHandlerRootView>
   );
 }
 
@@ -148,10 +164,12 @@ function TodoList() {
   };
 
   const toggleTodo = async (id: uuid) => {
-    const newStatus = currentFilter === 'pending' ? 'done' : 'pending';
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+    const newStatus = todo.status === "pending" ? "done" : "pending";
     await updateTodo(db, newStatus, id);
-    const todos = await getAllTodos(db); 
-    setTodos(todos);
+    const updatedTodos = await getAllTodos(db); 
+    setTodos(updatedTodos);
   };
 
   return (
@@ -211,7 +229,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     height: 44,
   },
-  itemdone: {
+  itemDone: {
     padding: 10,
     fontSize: 18,
     height: 44,
@@ -245,4 +263,14 @@ const styles = StyleSheet.create({
   filterTextActive: {
     fontWeight: 'bold',
   },
+  swipeableButton: {
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    width: 180,
+  },
+  swipeableText: {
+    fontSize: 14,
+    color: "white",
+    fontWeight: "bold",
+  }
 });
